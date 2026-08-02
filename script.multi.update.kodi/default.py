@@ -87,6 +87,46 @@ def clear_installation_packages():
     return clear_directory("special://home/addons/packages/")
 
 
+def clear_orphaned_addon_data():
+    result = json_rpc(
+        "Addons.GetAddons",
+        {
+            "enabled": "all",
+            "installed": True,
+            "properties": ["name"],
+        },
+    ) or {}
+    installed_addons = {
+        addon.get("addonid")
+        for addon in result.get("addons", [])
+        if addon.get("addonid")
+    }
+    if not installed_addons:
+        raise RuntimeError("Kodi returned no installed add-ons; orphan cleanup was stopped for safety")
+
+    addon_data_path = "special://profile/addon_data/"
+    directories, _files = xbmcvfs.listdir(addon_data_path)
+    orphaned = sorted(dirname for dirname in directories if dirname not in installed_addons)
+
+    folders_removed = 0
+    failed = 0
+    bytes_removed = 0
+    for dirname in orphaned:
+        target = addon_data_path + dirname + "/"
+        child_removed, child_failed, child_bytes_removed = clear_directory(target)
+        failed += child_failed
+        bytes_removed += child_bytes_removed
+        if xbmcvfs.rmdir(target, force=True):
+            folders_removed += 1
+            log("Removed orphaned add-on data folder: {}".format(dirname))
+        else:
+            failed += 1
+            log("Could not remove orphaned add-on data folder: {}".format(dirname), xbmc.LOGWARNING)
+        log("Orphan folder {} contained {} removable entries".format(dirname, child_removed))
+
+    return folders_removed, len(orphaned), failed, bytes_removed
+
+
 def reload_pvr_clients():
     result = json_rpc(
         "Addons.GetAddons",
@@ -217,7 +257,8 @@ def clean_libraries():
 def main():
     warning = (
         "Multi-Update will clear Kodi's temporary cache and downloaded installation packages, "
-        "reload enabled PVR clients, scan the video and music libraries, then clean both libraries. "
+        "reload enabled PVR clients, delete data folders belonging to uninstalled add-ons, scan "
+        "the video and music libraries, then clean both libraries. "
         "Kodi will not restart."
     )
     if xbmc.getCondVisibility("PVR.IsRecording"):
@@ -243,6 +284,25 @@ def main():
         client_count = reload_pvr_clients()
         log("Reloaded {} enabled PVR clients".format(client_count))
 
+        xbmcgui.Dialog().notification(
+            NAME,
+            "Removing uninstalled add-on data",
+            xbmcgui.NOTIFICATION_INFO,
+            4000,
+        )
+        orphan_folders_removed, orphan_folders_found, orphan_failures, orphan_bytes_removed = (
+            clear_orphaned_addon_data()
+        )
+        orphan_deleted_size = format_size(orphan_bytes_removed)
+        log(
+            "Orphan cleanup removed {}/{} folders ({}); {} failures".format(
+                orphan_folders_removed,
+                orphan_folders_found,
+                orphan_deleted_size,
+                orphan_failures,
+            )
+        )
+
         if client_count:
             pvr_result = "Complete ({} enabled client{})".format(
                 client_count,
@@ -255,9 +315,19 @@ def main():
             "Steps 1-3 are complete.\n\n"
             "Kodi cache deleted: {}\n"
             "Installation packages deleted: {}\n"
-            "PVR and EPG refresh: {}\n\n"
+            "PVR and EPG refresh: {}\n"
+            "Uninstalled add-on data: {}/{} folders deleted ({})\n"
+            "Add-on data cleanup failures: {}\n\n"
             "Do you want to scan and clean the libraries?"
-        ).format(cache_deleted_size, packages_deleted_size, pvr_result)
+        ).format(
+            cache_deleted_size,
+            packages_deleted_size,
+            pvr_result,
+            orphan_folders_removed,
+            orphan_folders_found,
+            orphan_deleted_size,
+            orphan_failures,
+        )
         if not xbmcgui.Dialog().yesno(
             NAME,
             summary,
