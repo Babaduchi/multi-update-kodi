@@ -73,7 +73,7 @@ def reload_pvr_clients():
     result = json_rpc(
         "Addons.GetAddons",
         {
-            "type": "xbmc.pvrclient",
+            "type": "kodi.pvrclient",
             "enabled": True,
             "installed": True,
             "properties": ["name"],
