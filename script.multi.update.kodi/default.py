@@ -39,24 +39,42 @@ def clear_directory(path):
     """Delete the contents of one explicitly supplied Kodi directory."""
     removed = 0
     failed = 0
+    bytes_removed = 0
     directories, files = xbmcvfs.listdir(path)
 
     for filename in files:
         target = path.rstrip("/\\") + "/" + filename
+        try:
+            file_size = xbmcvfs.Stat(target).st_size()
+        except Exception:
+            file_size = 0
         if xbmcvfs.delete(target):
             removed += 1
+            bytes_removed += file_size
         else:
             failed += 1
 
     for dirname in directories:
         target = path.rstrip("/\\") + "/" + dirname + "/"
-        child_removed, child_failed = clear_directory(target)
+        child_removed, child_failed, child_bytes_removed = clear_directory(target)
         removed += child_removed
         failed += child_failed
+        bytes_removed += child_bytes_removed
         if not xbmcvfs.rmdir(target, force=True):
             failed += 1
 
-    return removed, failed
+    return removed, failed, bytes_removed
+
+
+def format_size(byte_count):
+    size = float(byte_count)
+    units = ("B", "KB", "MB", "GB", "TB")
+    for unit in units:
+        if size < 1024.0 or unit == units[-1]:
+            if unit == "B":
+                return "{} {}".format(int(size), unit)
+            return "{:.1f} {}".format(size, unit)
+        size /= 1024.0
 
 
 def clear_cache():
@@ -174,7 +192,7 @@ def clean_libraries():
 
 def main():
     warning = (
-        "Multi Update will clear Kodi's temporary cache and downloaded installation packages, "
+        "Multi-Update will clear Kodi's temporary cache and downloaded installation packages, "
         "reload enabled PVR clients, scan the video and music libraries, then clean both libraries. "
         "Kodi will not restart."
     )
@@ -183,17 +201,21 @@ def main():
     elif xbmc.getCondVisibility("PVR.IsPlayingTV"):
         warning = "Live TV playback may stop while PVR clients reload.\n\n" + warning
 
-    if not xbmcgui.Dialog().yesno(NAME, warning, yeslabel="Run Multi Update", nolabel="Cancel"):
+    if not xbmcgui.Dialog().yesno(NAME, warning, yeslabel="Run Multi-Update", nolabel="Cancel"):
         return
 
     try:
         notify(1, "Clearing Kodi cache")
-        removed, failed = clear_cache()
-        log("Cache cleanup removed {} entries; {} could not be removed".format(removed, failed))
+        removed, failed, bytes_removed = clear_cache()
+        deleted_size = format_size(bytes_removed)
+        log("Cache cleanup removed {} entries ({}); {} could not be removed".format(removed, deleted_size, failed))
+        notify(1, "Cache cleared: {} deleted".format(deleted_size))
 
         notify(2, "Clearing stored installation packages")
-        removed, failed = clear_installation_packages()
-        log("Package cleanup removed {} entries; {} could not be removed".format(removed, failed))
+        removed, failed, bytes_removed = clear_installation_packages()
+        deleted_size = format_size(bytes_removed)
+        log("Package cleanup removed {} entries ({}); {} could not be removed".format(removed, deleted_size, failed))
+        notify(2, "Installation packages cleared: {} deleted".format(deleted_size))
 
         notify(3, "Reloading PVR data")
         client_count = reload_pvr_clients()
@@ -208,11 +230,11 @@ def main():
         notify(6, "Cleaning video and music libraries")
         clean_libraries()
     except Exception as exc:
-        log("Multi Update failed: {!r}".format(exc), xbmc.LOGERROR)
-        xbmcgui.Dialog().ok(NAME, "Multi Update stopped.\n\n{}".format(exc))
+        log("Multi-Update failed: {!r}".format(exc), xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(NAME, "Multi-Update stopped.\n\n{}".format(exc))
         return
 
-    xbmcgui.Dialog().notification(NAME, "All six steps completed", xbmcgui.NOTIFICATION_INFO, 5000)
+    xbmcgui.Dialog().notification(NAME, "Multi-Update is now complete", xbmcgui.NOTIFICATION_INFO, 5000)
 
 
 if __name__ == "__main__":

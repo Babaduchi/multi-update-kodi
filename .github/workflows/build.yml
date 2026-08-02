@@ -52,6 +52,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! gh release view "v${ADDON_VERSION}" >/dev/null 2>&1; then
-            gh release create "v${ADDON_VERSION}" --target "$GITHUB_SHA" --title "Multi Update ${ADDON_VERSION}" --notes "Windows utility add-on for Kodi 21 Omega."
+            gh release create "v${ADDON_VERSION}" --target "$GITHUB_SHA" --title "Multi-Update ${ADDON_VERSION}" --notes "Cross-platform maintenance utility for Kodi 21 Omega."
           fi
           gh release upload "v${ADDON_VERSION}" "$ADDON_ZIP" --clobber
