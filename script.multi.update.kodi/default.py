@@ -19,7 +19,7 @@ def log(message, level=xbmc.LOGINFO):
 def notify(step, message):
     xbmcgui.Dialog().notification(
         NAME,
-        "Step {}/9: {}".format(step, message),
+        "Step {}/10: {}".format(step, message),
         xbmcgui.NOTIFICATION_INFO,
         4000,
     )
@@ -353,19 +353,20 @@ def main():
         ):
             return
 
-        notify(7, "Scanning video library")
+        notify(8, "Scanning video library")
         scan_video_library()
 
-        notify(8, "Scanning music library")
+        notify(9, "Scanning music library")
         scan_music_library()
 
-        notify(9, "Cleaning video and music libraries")
+        notify(10, "Cleaning video and music libraries")
         clean_libraries()
     except Exception as exc:
         log("Multi-Update failed: {!r}".format(exc), xbmc.LOGERROR)
         xbmcgui.Dialog().ok(NAME, "Multi-Update stopped.\n\n{}".format(exc))
         return
 
+    xbmcgui.Dialog().ok(NAME, "All libraries are up to date.")
     xbmcgui.Dialog().notification(NAME, "Multi-Update is now complete", xbmcgui.NOTIFICATION_INFO, 5000)
 
 
