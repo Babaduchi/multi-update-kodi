@@ -1,6 +1,6 @@
 # Multi Update for Kodi
 
-Multi Update is a Windows-only utility add-on for Kodi 21 Omega. When launched and confirmed, it:
+Multi Update is a Windows and macOS utility add-on for Kodi 21 Omega. When launched and confirmed, it:
 
 1. Runs a complete video library update scan and waits for it to finish.
 2. Runs a complete music library update scan and waits for it to finish.
@@ -18,7 +18,7 @@ For direct installation, download the versioned `script.multi.update.kodi` ZIP f
 
 ## Diagnostics
 
-The Windows cleanup helper writes `%TEMP%\kodi-multi-update.log`.
+The cleanup helper writes `%TEMP%\kodi-multi-update.log` on Windows and `$TMPDIR/kodi-multi-update.log` on macOS.
 
 ## License
 
