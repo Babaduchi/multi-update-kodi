@@ -147,6 +147,30 @@ def scan_video_library():
     wait_for_scan("Library.IsScanningVideo", "Video library scan")
 
 
+def clear_texture_cache():
+    result = json_rpc(
+        "Textures.GetTextures",
+        {"properties": ["cachedurl"]},
+    ) or {}
+    texture_ids = [texture.get("textureid") for texture in result.get("textures", [])]
+    texture_ids = [texture_id for texture_id in texture_ids if texture_id is not None and texture_id >= 0]
+
+    removed = 0
+    failed = 0
+    monitor = xbmc.Monitor()
+    for texture_id in texture_ids:
+        if monitor.abortRequested():
+            raise RuntimeError("Kodi is shutting down")
+        try:
+            json_rpc("Textures.RemoveTexture", {"textureid": texture_id})
+            removed += 1
+        except Exception as exc:
+            failed += 1
+            log("Could not remove texture {}: {!r}".format(texture_id, exc), xbmc.LOGWARNING)
+
+    return removed, failed
+
+
 def scan_music_library():
     json_rpc("AudioLibrary.Scan", {"showdialogs": False})
     wait_for_scan("Library.IsScanningMusic", "Music library scan")
@@ -244,6 +268,37 @@ def main():
 
         notify(4, "Scanning video library")
         scan_video_library()
+
+        clear_textures = xbmcgui.Dialog().yesno(
+            NAME,
+            "Delete Kodi's cached textures now?\n\n"
+            "Kodi will safely remove the registered texture-cache entries without deleting "
+            "Textures13.db or restarting.",
+            yeslabel="Yes",
+            nolabel="No",
+        )
+        if clear_textures:
+            xbmcgui.Dialog().notification(
+                NAME,
+                "Clearing texture cache",
+                xbmcgui.NOTIFICATION_INFO,
+                4000,
+            )
+            textures_removed, texture_failures = clear_texture_cache()
+            log(
+                "Texture cleanup removed {} entries; {} could not be removed".format(
+                    textures_removed,
+                    texture_failures,
+                )
+            )
+            if texture_failures:
+                texture_message = "Texture cache: {} removed, {} failed".format(
+                    textures_removed,
+                    texture_failures,
+                )
+            else:
+                texture_message = "Texture cache cleared: {} entries removed".format(textures_removed)
+            xbmcgui.Dialog().notification(NAME, texture_message, xbmcgui.NOTIFICATION_INFO, 5000)
 
         notify(5, "Scanning music library")
         scan_music_library()
