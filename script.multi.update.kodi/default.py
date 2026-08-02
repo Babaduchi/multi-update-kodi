@@ -255,18 +255,12 @@ def clean_libraries():
 
 
 def main():
-    warning = (
-        "Multi-Update will clear Kodi's temporary cache and downloaded installation packages, "
-        "reload enabled PVR clients, and delete data folders belonging to uninstalled add-ons. "
-        "You can then choose whether to delete cached textures and scan and clean the libraries. "
-        "Kodi will not restart."
-    )
-    if xbmc.getCondVisibility("PVR.IsRecording"):
-        warning = "WARNING: A recording appears to be active. Reloading PVR clients may affect it.\n\n" + warning
-    elif xbmc.getCondVisibility("PVR.IsPlayingTV"):
-        warning = "Live TV playback may stop while PVR clients reload.\n\n" + warning
-
-    if not xbmcgui.Dialog().yesno(NAME, warning, yeslabel="Run Multi-Update", nolabel="Cancel"):
+    if not xbmcgui.Dialog().yesno(
+        NAME,
+        "The all-purpose cleaner!",
+        yeslabel="Run Multi-Update",
+        nolabel="Cancel",
+    ):
         return
 
     try:
@@ -307,13 +301,11 @@ def main():
             pvr_result = "Complete (no enabled clients found)"
 
         summary = (
-            "Step 5 maintenance summary\n\n"
             "Kodi cache deleted: {}\n"
             "Installation packages deleted: {}\n"
             "PVR and EPG refresh: {}\n"
             "Uninstalled add-on data: {}/{} folders deleted ({})\n"
-            "Add-on data cleanup failures: {}\n\n"
-            "Delete Kodi's registered texture cache next?"
+            "Add-on data cleanup failures: {}"
         ).format(
             cache_deleted_size,
             packages_deleted_size,
@@ -340,10 +332,8 @@ def main():
             )
         )
         texture_summary = (
-            "Step 6 maintenance summary\n\n"
             "Texture-cache entries removed: {}\n"
-            "Texture cleanup failures: {}\n\n"
-            "Do you want to scan and clean the libraries?"
+            "Texture cleanup failures: {}"
         ).format(textures_removed, texture_failures)
         if not xbmcgui.Dialog().yesno(
             NAME,
