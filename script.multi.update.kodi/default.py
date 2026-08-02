@@ -19,7 +19,7 @@ def log(message, level=xbmc.LOGINFO):
 def notify(step, message):
     xbmcgui.Dialog().notification(
         NAME,
-        "Step {}/6: {}".format(step, message),
+        "Step {}/9: {}".format(step, message),
         xbmcgui.NOTIFICATION_INFO,
         4000,
     )
@@ -257,8 +257,8 @@ def clean_libraries():
 def main():
     warning = (
         "Multi-Update will clear Kodi's temporary cache and downloaded installation packages, "
-        "reload enabled PVR clients, delete data folders belonging to uninstalled add-ons, scan "
-        "the video and music libraries, then clean both libraries. "
+        "reload enabled PVR clients, and delete data folders belonging to uninstalled add-ons. "
+        "You can then choose whether to delete cached textures and scan and clean the libraries. "
         "Kodi will not restart."
     )
     if xbmc.getCondVisibility("PVR.IsRecording"):
@@ -284,12 +284,7 @@ def main():
         client_count = reload_pvr_clients()
         log("Reloaded {} enabled PVR clients".format(client_count))
 
-        xbmcgui.Dialog().notification(
-            NAME,
-            "Removing uninstalled add-on data",
-            xbmcgui.NOTIFICATION_INFO,
-            4000,
-        )
+        notify(4, "Removing uninstalled add-on data")
         orphan_folders_removed, orphan_folders_found, orphan_failures, orphan_bytes_removed = (
             clear_orphaned_addon_data()
         )
@@ -312,13 +307,13 @@ def main():
             pvr_result = "Complete (no enabled clients found)"
 
         summary = (
-            "Steps 1-3 are complete.\n\n"
+            "Step 5 maintenance summary\n\n"
             "Kodi cache deleted: {}\n"
             "Installation packages deleted: {}\n"
             "PVR and EPG refresh: {}\n"
             "Uninstalled add-on data: {}/{} folders deleted ({})\n"
             "Add-on data cleanup failures: {}\n\n"
-            "Do you want to scan and clean the libraries?"
+            "Delete Kodi's registered texture cache next?"
         ).format(
             cache_deleted_size,
             packages_deleted_size,
@@ -331,49 +326,40 @@ def main():
         if not xbmcgui.Dialog().yesno(
             NAME,
             summary,
-            yeslabel="Scan Libraries",
-            nolabel="Exit Add-on",
+            yeslabel="Delete Textures",
+            nolabel="Exit",
         ):
             return
 
-        notify(4, "Scanning video library")
+        notify(6, "Clearing texture cache")
+        textures_removed, texture_failures = clear_texture_cache()
+        log(
+            "Texture cleanup removed {} entries; {} could not be removed".format(
+                textures_removed,
+                texture_failures,
+            )
+        )
+        texture_summary = (
+            "Step 6 maintenance summary\n\n"
+            "Texture-cache entries removed: {}\n"
+            "Texture cleanup failures: {}\n\n"
+            "Do you want to scan and clean the libraries?"
+        ).format(textures_removed, texture_failures)
+        if not xbmcgui.Dialog().yesno(
+            NAME,
+            texture_summary,
+            yeslabel="Scan Libraries",
+            nolabel="Exit",
+        ):
+            return
+
+        notify(7, "Scanning video library")
         scan_video_library()
 
-        clear_textures = xbmcgui.Dialog().yesno(
-            NAME,
-            "Delete Kodi's cached textures now?\n\n"
-            "Kodi will safely remove the registered texture-cache entries without deleting "
-            "Textures13.db or restarting.",
-            yeslabel="Yes",
-            nolabel="No",
-        )
-        if clear_textures:
-            xbmcgui.Dialog().notification(
-                NAME,
-                "Clearing texture cache",
-                xbmcgui.NOTIFICATION_INFO,
-                4000,
-            )
-            textures_removed, texture_failures = clear_texture_cache()
-            log(
-                "Texture cleanup removed {} entries; {} could not be removed".format(
-                    textures_removed,
-                    texture_failures,
-                )
-            )
-            if texture_failures:
-                texture_message = "Texture cache: {} removed, {} failed".format(
-                    textures_removed,
-                    texture_failures,
-                )
-            else:
-                texture_message = "Texture cache cleared: {} entries removed".format(textures_removed)
-            xbmcgui.Dialog().notification(NAME, texture_message, xbmcgui.NOTIFICATION_INFO, 5000)
-
-        notify(5, "Scanning music library")
+        notify(8, "Scanning music library")
         scan_music_library()
 
-        notify(6, "Cleaning video and music libraries")
+        notify(9, "Cleaning video and music libraries")
         clean_libraries()
     except Exception as exc:
         log("Multi-Update failed: {!r}".format(exc), xbmc.LOGERROR)
