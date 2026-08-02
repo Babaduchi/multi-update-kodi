@@ -1,0 +1,57 @@
+name: Build and validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  addon:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Read add-on version
+        run: |
+          python - <<'PY'
+          import os
+          import xml.etree.ElementTree as ET
+          version = ET.parse("script.multi.update.kodi/addon.xml").getroot().attrib["version"]
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write("ADDON_VERSION={}\n".format(version))
+              env.write("ADDON_ZIP=script.multi.update.kodi-{}.zip\n".format(version))
+          PY
+      - name: Validate Python and XML
+        run: |
+          python -m compileall -q script.multi.update.kodi
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          ET.parse("script.multi.update.kodi/addon.xml")
+          PY
+      - name: Package add-on
+        run: zip -qr "$ADDON_ZIP" script.multi.update.kodi -x '*/__pycache__/*'
+      - name: Verify ZIP structure
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import PurePosixPath
+          from zipfile import ZipFile
+          with ZipFile(os.environ["ADDON_ZIP"]) as package:
+              paths = [PurePosixPath(name) for name in package.namelist()]
+              assert {path.parts[0] for path in paths if path.parts} == {"script.multi.update.kodi"}
+              assert PurePosixPath("script.multi.update.kodi/addon.xml") in paths
+          PY
+      - name: Publish release ZIP
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "v${ADDON_VERSION}" >/dev/null 2>&1; then
+            gh release create "v${ADDON_VERSION}" --target "$GITHUB_SHA" --title "Multi Update ${ADDON_VERSION}" --notes "Windows utility add-on for Kodi 21 Omega."
+          fi
+          gh release upload "v${ADDON_VERSION}" "$ADDON_ZIP" --clobber
