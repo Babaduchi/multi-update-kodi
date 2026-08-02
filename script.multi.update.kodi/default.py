@@ -1,6 +1,4 @@
 import json
-import os
-import subprocess
 import time
 
 import xbmc
@@ -11,11 +9,20 @@ import xbmcvfs
 
 ADDON = xbmcaddon.Addon()
 NAME = ADDON.getAddonInfo("name")
-SCAN_TIMEOUT_SECONDS = 6 * 60 * 60
+OPERATION_TIMEOUT_SECONDS = 6 * 60 * 60
 
 
 def log(message, level=xbmc.LOGINFO):
     xbmc.log("[{}] {}".format(NAME, message), level)
+
+
+def notify(step, message):
+    xbmcgui.Dialog().notification(
+        NAME,
+        "Step {}/6: {}".format(step, message),
+        xbmcgui.NOTIFICATION_INFO,
+        4000,
+    )
 
 
 def json_rpc(method, params=None):
@@ -28,161 +35,184 @@ def json_rpc(method, params=None):
     return response.get("result")
 
 
+def clear_directory(path):
+    """Delete the contents of one explicitly supplied Kodi directory."""
+    removed = 0
+    failed = 0
+    directories, files = xbmcvfs.listdir(path)
+
+    for filename in files:
+        target = path.rstrip("/\\") + "/" + filename
+        if xbmcvfs.delete(target):
+            removed += 1
+        else:
+            failed += 1
+
+    for dirname in directories:
+        target = path.rstrip("/\\") + "/" + dirname + "/"
+        child_removed, child_failed = clear_directory(target)
+        removed += child_removed
+        failed += child_failed
+        if not xbmcvfs.rmdir(target, force=True):
+            failed += 1
+
+    return removed, failed
+
+
+def clear_cache():
+    return clear_directory("special://temp/")
+
+
+def clear_installation_packages():
+    # Kodi stores downloaded add-on and repository ZIPs here. Installed add-ons
+    # and their settings live elsewhere and are deliberately not touched.
+    return clear_directory("special://home/addons/packages/")
+
+
+def reload_pvr_clients():
+    result = json_rpc(
+        "Addons.GetAddons",
+        {
+            "type": "xbmc.pvrclient",
+            "enabled": True,
+            "installed": True,
+            "properties": ["name"],
+        },
+    ) or {}
+    clients = [addon.get("addonid") for addon in result.get("addons", [])]
+    clients = [client_id for client_id in clients if client_id]
+
+    disabled = []
+    disable_failures = []
+    for client_id in clients:
+        try:
+            json_rpc("Addons.SetAddonEnabled", {"addonid": client_id, "enabled": False})
+            disabled.append(client_id)
+        except Exception:
+            disable_failures.append(client_id)
+
+    if disabled:
+        xbmc.Monitor().waitForAbort(1.5)
+
+    enable_failures = []
+    for client_id in disabled:
+        try:
+            json_rpc("Addons.SetAddonEnabled", {"addonid": client_id, "enabled": True})
+        except Exception:
+            enable_failures.append(client_id)
+
+    if enable_failures:
+        raise RuntimeError("Could not re-enable PVR clients: {}".format(", ".join(enable_failures)))
+    if disable_failures:
+        raise RuntimeError("Could not reload PVR clients: {}".format(", ".join(disable_failures)))
+    return len(clients)
+
+
 def wait_for_scan(condition, label):
     monitor = xbmc.Monitor()
-    deadline = time.monotonic() + SCAN_TIMEOUT_SECONDS
-
-    # JSON-RPC schedules the scan asynchronously. Give Kodi a short window to
-    # expose its scanning condition before deciding a no-op scan is complete.
+    deadline = time.monotonic() + OPERATION_TIMEOUT_SECONDS
     start_deadline = time.monotonic() + 10
+
     while not xbmc.getCondVisibility(condition) and time.monotonic() < start_deadline:
         if monitor.waitForAbort(0.25):
             raise RuntimeError("Kodi is shutting down")
 
     while xbmc.getCondVisibility(condition):
         if time.monotonic() >= deadline:
-            raise RuntimeError("{} scan exceeded six hours".format(label))
+            raise RuntimeError("{} exceeded six hours".format(label))
         if monitor.waitForAbort(1):
             raise RuntimeError("Kodi is shutting down")
 
 
-def run_library_scans():
-    xbmcgui.Dialog().notification(NAME, "Updating video library", xbmcgui.NOTIFICATION_INFO, 3000)
+def scan_video_library():
     json_rpc("VideoLibrary.Scan", {"showdialogs": False})
-    wait_for_scan("Library.IsScanningVideo", "Video library")
+    wait_for_scan("Library.IsScanningVideo", "Video library scan")
 
-    xbmcgui.Dialog().notification(NAME, "Updating music library", xbmcgui.NOTIFICATION_INFO, 3000)
+
+def scan_music_library():
     json_rpc("AudioLibrary.Scan", {"showdialogs": False})
-    wait_for_scan("Library.IsScanningMusic", "Music library")
+    wait_for_scan("Library.IsScanningMusic", "Music library scan")
 
 
-def launch_windows_cleanup(database_dir):
-    kodi_executable = xbmcvfs.translatePath("special://xbmc/kodi.exe")
-    helper = os.path.join(ADDON.getAddonInfo("path"), "resources", "clear_pvr.ps1")
+class CleanMonitor(xbmc.Monitor):
+    def __init__(self):
+        super().__init__()
+        self.started = set()
+        self.finished = set()
 
-    if not os.path.isfile(kodi_executable):
-        raise RuntimeError("Kodi executable was not found: {}".format(kodi_executable))
-    if not os.path.isdir(database_dir):
-        raise RuntimeError("Kodi database directory was not found: {}".format(database_dir))
-    if not os.path.isfile(helper):
-        raise RuntimeError("PVR cleanup helper was not found")
+    def onCleanStarted(self, library):
+        self.started.add(library.lower())
 
-    command = [
-        "powershell.exe",
-        "-NoLogo",
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        helper,
-        "-DatabaseDirectory",
-        database_dir,
-        "-KodiExecutable",
-        kodi_executable,
-        "-KodiProcessId",
-        str(os.getpid()),
-    ]
-
-    # Detach the helper and suppress a console window so it survives Kodi exit.
-    creation_flags = 0x00000008 | 0x00000200 | 0x08000000
-    subprocess.Popen(command, close_fds=True, creationflags=creation_flags)
+    def onCleanFinished(self, library):
+        self.finished.add(library.lower())
 
 
-def launch_macos_cleanup(database_dir):
-    # A detached shell survives Kodi's exit, waits for SQLite handles to close,
-    # clears the PVR databases, and reopens the Kodi application bundle.
-    script = r'''
-database_dir=$1
-kodi_pid=$2
-log_path="${TMPDIR:-/tmp}/kodi-multi-update.log"
-deadline=120
-elapsed=0
+def clean_library(monitor, library, method):
+    json_rpc(method, {"showdialogs": False})
+    deadline = time.monotonic() + OPERATION_TIMEOUT_SECONDS
+    start_deadline = time.monotonic() + 10
 
-printf '%s Waiting for Kodi process %s to exit.\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$kodi_pid" >> "$log_path"
-while kill -0 "$kodi_pid" 2>/dev/null && [ "$elapsed" -lt "$deadline" ]; do
-    sleep 1
-    elapsed=$((elapsed + 1))
-done
+    while library not in monitor.started and time.monotonic() < start_deadline:
+        if monitor.waitForAbort(0.25):
+            raise RuntimeError("Kodi is shutting down")
 
-if kill -0 "$kodi_pid" 2>/dev/null; then
-    printf '%s ERROR: Kodi did not exit within two minutes; no PVR data was removed.\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$log_path"
-    /usr/bin/open -a Kodi
-    exit 1
-fi
-
-sleep 1
-found=0
-for database in "$database_dir"/TV*.db "$database_dir"/Epg*.db; do
-    [ -f "$database" ] || continue
-    found=1
-    /bin/rm -f -- "$database"
-    printf '%s Removed %s.\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$database" >> "$log_path"
-done
-
-if [ "$found" -eq 0 ]; then
-    printf '%s No TV*.db or Epg*.db files were present.\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$log_path"
-fi
-
-printf '%s Restarting Kodi.\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "$log_path"
-/usr/bin/open -a Kodi
-'''
-    subprocess.Popen(
-        ["/bin/sh", "-c", script, "multi-update", database_dir, str(os.getpid())],
-        close_fds=True,
-        start_new_session=True,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    while library not in monitor.finished:
+        # A no-op clean may finish before callbacks are delivered.
+        if library not in monitor.started and time.monotonic() >= start_deadline:
+            return
+        if time.monotonic() >= deadline:
+            raise RuntimeError("{} library clean exceeded six hours".format(library.title()))
+        if monitor.waitForAbort(1):
+            raise RuntimeError("Kodi is shutting down")
 
 
-def launch_cleanup_helper():
-    database_dir = xbmcvfs.translatePath("special://database/")
-    if not os.path.isdir(database_dir):
-        raise RuntimeError("Kodi database directory was not found: {}".format(database_dir))
-
-    if xbmc.getCondVisibility("System.Platform.Windows"):
-        launch_windows_cleanup(database_dir)
-    elif xbmc.getCondVisibility("System.Platform.OSX"):
-        launch_macos_cleanup(database_dir)
-    else:
-        raise RuntimeError("This add-on supports Windows and macOS only")
+def clean_libraries():
+    monitor = CleanMonitor()
+    clean_library(monitor, "video", "VideoLibrary.Clean")
+    clean_library(monitor, "music", "AudioLibrary.Clean")
 
 
 def main():
-    supported = (
-        xbmc.getCondVisibility("System.Platform.Windows")
-        or xbmc.getCondVisibility("System.Platform.OSX")
-    )
-    if not supported:
-        xbmcgui.Dialog().ok(NAME, "This add-on supports Windows and macOS only.")
-        return
-
     warning = (
-        "This will update the complete video and music libraries. Kodi will then close, "
-        "clear all cached PVR and guide data, and restart. Enabled PVR clients will rebuild "
-        "their channels, groups, timers, recordings, providers, and EPG data."
+        "Multi Update will clear Kodi's temporary cache and downloaded installation packages, "
+        "reload enabled PVR clients, scan the video and music libraries, then clean both libraries. "
+        "Kodi will not restart."
     )
     if xbmc.getCondVisibility("PVR.IsRecording"):
-        warning = "WARNING: A recording appears to be active.\n\n" + warning
+        warning = "WARNING: A recording appears to be active. Reloading PVR clients may affect it.\n\n" + warning
     elif xbmc.getCondVisibility("PVR.IsPlayingTV"):
-        warning = "Live TV playback will stop.\n\n" + warning
+        warning = "Live TV playback may stop while PVR clients reload.\n\n" + warning
 
-    if not xbmcgui.Dialog().yesno(NAME, warning, yeslabel="Update Everything", nolabel="Cancel"):
+    if not xbmcgui.Dialog().yesno(NAME, warning, yeslabel="Run Multi Update", nolabel="Cancel"):
         return
 
     try:
-        run_library_scans()
-        launch_cleanup_helper()
+        notify(1, "Clearing Kodi cache")
+        removed, failed = clear_cache()
+        log("Cache cleanup removed {} entries; {} could not be removed".format(removed, failed))
+
+        notify(2, "Clearing stored installation packages")
+        removed, failed = clear_installation_packages()
+        log("Package cleanup removed {} entries; {} could not be removed".format(removed, failed))
+
+        notify(3, "Reloading PVR data")
+        client_count = reload_pvr_clients()
+        log("Reloaded {} enabled PVR clients".format(client_count))
+
+        notify(4, "Scanning video library")
+        scan_video_library()
+
+        notify(5, "Scanning music library")
+        scan_music_library()
+
+        notify(6, "Cleaning video and music libraries")
+        clean_libraries()
     except Exception as exc:
-        log("Update failed: {!r}".format(exc), xbmc.LOGERROR)
-        xbmcgui.Dialog().ok(NAME, "The update could not be completed.\n\n{}".format(exc))
+        log("Multi Update failed: {!r}".format(exc), xbmc.LOGERROR)
+        xbmcgui.Dialog().ok(NAME, "Multi Update stopped.\n\n{}".format(exc))
         return
 
-    log("Library scans completed; closing Kodi for PVR database rebuild")
-    xbmcgui.Dialog().notification(NAME, "Scans complete; restarting Kodi", xbmcgui.NOTIFICATION_INFO, 3000)
-    xbmc.executebuiltin("Quit")
+    xbmcgui.Dialog().notification(NAME, "All six steps completed", xbmcgui.NOTIFICATION_INFO, 5000)
 
 
 if __name__ == "__main__":

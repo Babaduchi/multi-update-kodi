@@ -2,15 +2,16 @@
 
 ![Multi Update icon](script.multi.update.kodi/resources/icon.png)
 
-Multi Update is a Windows and macOS utility add-on for Kodi 21 Omega. When launched and confirmed, it:
+Multi Update is a cross-platform maintenance utility for Kodi 21 Omega. After confirmation it performs six ordered steps without restarting Kodi:
 
-1. Runs a complete video library update scan and waits for it to finish.
-2. Runs a complete music library update scan and waits for it to finish.
-3. Closes Kodi.
-4. Removes Kodi's cached `TV*.db` and `Epg*.db` databases—the equivalent of **Settings → PVR & Live TV → General → Clear data**.
-5. Restarts Kodi so every enabled PVR client rebuilds its channels, groups, timers, recordings, providers, and guide data.
+1. Clears the contents of Kodi's `special://temp/` cache.
+2. Clears downloaded add-on and build packages from `special://home/addons/packages/`.
+3. Reloads every enabled PVR client to refresh its cached PVR and EPG data without deleting Kodi's open databases.
+4. Runs and waits for a complete video-library update scan.
+5. Runs and waits for a complete music-library update scan.
+6. Cleans both video and music libraries.
 
-The add-on does not alter PVR client configuration. Do not run it during Live TV playback or an active recording.
+Installed add-ons, add-on settings, media, sources, and PVR databases are not deleted. Reloading PVR clients may interrupt Live TV or client-managed activity, so the add-on warns before it starts.
 
 ## Installation
 
@@ -20,7 +21,7 @@ For direct installation, download the versioned `script.multi.update.kodi` ZIP f
 
 ## Diagnostics
 
-The cleanup helper writes `%TEMP%\kodi-multi-update.log` on Windows and `$TMPDIR/kodi-multi-update.log` on macOS.
+Progress and cleanup counts are written to Kodi's standard log. Any failure is also shown in a dialog.
 
 ## License
 
