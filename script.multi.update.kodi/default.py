@@ -16,15 +16,6 @@ def log(message, level=xbmc.LOGINFO):
     xbmc.log("[{}] {}".format(NAME, message), level)
 
 
-def notify(step, message):
-    xbmcgui.Dialog().notification(
-        NAME,
-        "Step {}/10: {}".format(step, message),
-        xbmcgui.NOTIFICATION_INFO,
-        4000,
-    )
-
-
 def json_rpc(method, params=None):
     request = {"jsonrpc": "2.0", "id": 1, "method": method}
     if params:
@@ -264,21 +255,17 @@ def main():
         return
 
     try:
-        notify(1, "Clearing Kodi cache")
         removed, failed, bytes_removed = clear_cache()
         cache_deleted_size = format_size(bytes_removed)
         log("Cache cleanup removed {} entries ({}); {} could not be removed".format(removed, cache_deleted_size, failed))
 
-        notify(2, "Clearing stored installation packages")
         removed, failed, bytes_removed = clear_installation_packages()
         packages_deleted_size = format_size(bytes_removed)
         log("Package cleanup removed {} entries ({}); {} could not be removed".format(removed, packages_deleted_size, failed))
 
-        notify(3, "Reloading PVR data")
         client_count = reload_pvr_clients()
         log("Reloaded {} enabled PVR clients".format(client_count))
 
-        notify(4, "Removing uninstalled add-on data")
         orphan_folders_removed, orphan_folders_found, orphan_failures, orphan_bytes_removed = (
             clear_orphaned_addon_data()
         )
@@ -323,7 +310,6 @@ def main():
         ):
             return
 
-        notify(6, "Clearing texture cache")
         textures_removed, texture_failures = clear_texture_cache()
         log(
             "Texture cleanup removed {} entries; {} could not be removed".format(
@@ -343,13 +329,10 @@ def main():
         ):
             return
 
-        notify(8, "Scanning video library")
         scan_video_library()
 
-        notify(9, "Scanning music library")
         scan_music_library()
 
-        notify(10, "Cleaning video and music libraries")
         clean_libraries()
     except Exception as exc:
         log("Multi-Update failed: {!r}".format(exc), xbmc.LOGERROR)
@@ -357,7 +340,6 @@ def main():
         return
 
     xbmcgui.Dialog().ok(NAME, "All libraries are up to date.")
-    xbmcgui.Dialog().notification(NAME, "Multi-Update is now complete", xbmcgui.NOTIFICATION_INFO, 5000)
 
 
 if __name__ == "__main__":

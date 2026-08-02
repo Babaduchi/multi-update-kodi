@@ -6,6 +6,8 @@ Multi-Update is a cross-platform maintenance utility for Kodi 21 Omega. After co
 
 The launch dialog says **The all-purpose cleaner!**
 
+The add-on uses dialogs for choices, summaries, errors, and completion. It does not display transient notifications.
+
 1. Clears the contents of Kodi's `special://temp/` cache.
 2. Clears downloaded add-on and build packages from `special://home/addons/packages/`.
 3. Reloads every enabled PVR client to refresh its cached PVR and EPG data without deleting Kodi's open databases.
