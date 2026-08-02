@@ -207,19 +207,40 @@ def main():
     try:
         notify(1, "Clearing Kodi cache")
         removed, failed, bytes_removed = clear_cache()
-        deleted_size = format_size(bytes_removed)
-        log("Cache cleanup removed {} entries ({}); {} could not be removed".format(removed, deleted_size, failed))
-        notify(1, "Cache cleared: {} deleted".format(deleted_size))
+        cache_deleted_size = format_size(bytes_removed)
+        log("Cache cleanup removed {} entries ({}); {} could not be removed".format(removed, cache_deleted_size, failed))
 
         notify(2, "Clearing stored installation packages")
         removed, failed, bytes_removed = clear_installation_packages()
-        deleted_size = format_size(bytes_removed)
-        log("Package cleanup removed {} entries ({}); {} could not be removed".format(removed, deleted_size, failed))
-        notify(2, "Installation packages cleared: {} deleted".format(deleted_size))
+        packages_deleted_size = format_size(bytes_removed)
+        log("Package cleanup removed {} entries ({}); {} could not be removed".format(removed, packages_deleted_size, failed))
 
         notify(3, "Reloading PVR data")
         client_count = reload_pvr_clients()
         log("Reloaded {} enabled PVR clients".format(client_count))
+
+        if client_count:
+            pvr_result = "Complete ({} enabled client{})".format(
+                client_count,
+                "" if client_count == 1 else "s",
+            )
+        else:
+            pvr_result = "Complete (no enabled clients found)"
+
+        summary = (
+            "Steps 1-3 are complete.\n\n"
+            "Kodi cache deleted: {}\n"
+            "Installation packages deleted: {}\n"
+            "PVR and EPG refresh: {}\n\n"
+            "Do you want to scan and clean the libraries?"
+        ).format(cache_deleted_size, packages_deleted_size, pvr_result)
+        if not xbmcgui.Dialog().yesno(
+            NAME,
+            summary,
+            yeslabel="Scan Libraries",
+            nolabel="Exit Add-on",
+        ):
+            return
 
         notify(4, "Scanning video library")
         scan_video_library()
