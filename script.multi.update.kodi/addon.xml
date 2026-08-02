@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.multi.update.kodi"
        name="Multi Update"
-       version="1.1.0"
+       version="1.1.1"
        provider-name="Babaduchi">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -16,6 +16,9 @@
     <license>MIT</license>
     <website>https://github.com/Babaduchi/multi-update-kodi</website>
     <source>https://github.com/Babaduchi/multi-update-kodi</source>
-    <news>Add macOS cleanup and restart support.</news>
+    <news>Add the official Multi Update icon.</news>
+    <assets>
+      <icon>resources/icon.png</icon>
+    </assets>
   </extension>
 </addon>

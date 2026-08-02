@@ -1,5 +1,7 @@
 # Multi Update for Kodi
 
+![Multi Update icon](script.multi.update.kodi/resources/icon.png)
+
 Multi Update is a Windows and macOS utility add-on for Kodi 21 Omega. When launched and confirmed, it:
 
 1. Runs a complete video library update scan and waits for it to finish.
