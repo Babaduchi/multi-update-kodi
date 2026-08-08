@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addon id="script.multi.update.kodi"
        name="Multi-Update"
-       version="2.4.3"
+       version="2.5.0"
        provider-name="Babaduchi">
   <requires>
     <import addon="xbmc.python" version="3.0.0"/>
@@ -16,7 +16,7 @@
     <license>MIT</license>
     <website>https://github.com/Babaduchi/multi-update-kodi</website>
     <source>https://github.com/Babaduchi/multi-update-kodi</source>
-    <news>Remove all transient notifications while retaining workflow, summary, error, and completion dialogs.</news>
+    <news>Debloat and harden the runtime, improve cleanup accounting and PVR wording, add workflow tests, and losslessly optimize the icon.</news>
     <assets>
       <icon>resources/icon.png</icon>
     </assets>

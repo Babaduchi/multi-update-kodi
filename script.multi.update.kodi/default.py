@@ -51,7 +51,9 @@ def clear_directory(path):
         removed += child_removed
         failed += child_failed
         bytes_removed += child_bytes_removed
-        if not xbmcvfs.rmdir(target, force=True):
+        # Do not force-remove a non-empty directory: files that failed above
+        # must remain failures rather than being deleted without being counted.
+        if not xbmcvfs.rmdir(target):
             failed += 1
 
     return removed, failed, bytes_removed
@@ -68,30 +70,20 @@ def format_size(byte_count):
         size /= 1024.0
 
 
-def clear_cache():
-    return clear_directory("special://temp/")
-
-
-def clear_installation_packages():
-    # Kodi stores downloaded add-on and repository ZIPs here. Installed add-ons
-    # and their settings live elsewhere and are deliberately not touched.
-    return clear_directory("special://home/addons/packages/")
-
-
-def clear_orphaned_addon_data():
-    result = json_rpc(
-        "Addons.GetAddons",
-        {
-            "enabled": "all",
-            "installed": True,
-            "properties": ["name"],
-        },
-    ) or {}
-    installed_addons = {
+def installed_addon_ids(addon_type=None, enabled="all"):
+    params = {"enabled": enabled, "installed": True}
+    if addon_type:
+        params["type"] = addon_type
+    result = json_rpc("Addons.GetAddons", params) or {}
+    return {
         addon.get("addonid")
         for addon in result.get("addons", [])
         if addon.get("addonid")
     }
+
+
+def clear_orphaned_addon_data():
+    installed_addons = installed_addon_ids()
     if not installed_addons:
         raise RuntimeError("Kodi returned no installed add-ons; orphan cleanup was stopped for safety")
 
@@ -107,7 +99,7 @@ def clear_orphaned_addon_data():
         child_removed, child_failed, child_bytes_removed = clear_directory(target)
         failed += child_failed
         bytes_removed += child_bytes_removed
-        if xbmcvfs.rmdir(target, force=True):
+        if xbmcvfs.rmdir(target):
             folders_removed += 1
             log("Removed orphaned add-on data folder: {}".format(dirname))
         else:
@@ -119,17 +111,7 @@ def clear_orphaned_addon_data():
 
 
 def reload_pvr_clients():
-    result = json_rpc(
-        "Addons.GetAddons",
-        {
-            "type": "kodi.pvrclient",
-            "enabled": True,
-            "installed": True,
-            "properties": ["name"],
-        },
-    ) or {}
-    clients = [addon.get("addonid") for addon in result.get("addons", [])]
-    clients = [client_id for client_id in clients if client_id]
+    clients = sorted(installed_addon_ids("kodi.pvrclient", enabled=True))
 
     disabled = []
     disable_failures = []
@@ -173,18 +155,18 @@ def wait_for_scan(condition, label):
             raise RuntimeError("Kodi is shutting down")
 
 
-def scan_video_library():
-    json_rpc("VideoLibrary.Scan", {"showdialogs": False})
-    wait_for_scan("Library.IsScanningVideo", "Video library scan")
+def scan_library(method, condition, label):
+    json_rpc(method, {"showdialogs": False})
+    wait_for_scan(condition, label)
 
 
 def clear_texture_cache():
-    result = json_rpc(
-        "Textures.GetTextures",
-        {"properties": ["cachedurl"]},
-    ) or {}
-    texture_ids = [texture.get("textureid") for texture in result.get("textures", [])]
-    texture_ids = [texture_id for texture_id in texture_ids if texture_id is not None and texture_id >= 0]
+    result = json_rpc("Textures.GetTextures") or {}
+    texture_ids = [
+        texture.get("textureid")
+        for texture in result.get("textures", [])
+        if isinstance(texture.get("textureid"), int) and texture["textureid"] >= 0
+    ]
 
     removed = 0
     failed = 0
@@ -200,11 +182,6 @@ def clear_texture_cache():
             log("Could not remove texture {}: {!r}".format(texture_id, exc), xbmc.LOGWARNING)
 
     return removed, failed
-
-
-def scan_music_library():
-    json_rpc("AudioLibrary.Scan", {"showdialogs": False})
-    wait_for_scan("Library.IsScanningMusic", "Music library scan")
 
 
 class CleanMonitor(xbmc.Monitor):
@@ -255,11 +232,13 @@ def main():
         return
 
     try:
-        removed, failed, bytes_removed = clear_cache()
+        removed, failed, bytes_removed = clear_directory("special://temp/")
         cache_deleted_size = format_size(bytes_removed)
         log("Cache cleanup removed {} entries ({}); {} could not be removed".format(removed, cache_deleted_size, failed))
 
-        removed, failed, bytes_removed = clear_installation_packages()
+        # Downloaded add-on/repository ZIPs live here; installed add-ons and
+        # their settings are elsewhere and are not touched.
+        removed, failed, bytes_removed = clear_directory("special://home/addons/packages/")
         packages_deleted_size = format_size(bytes_removed)
         log("Package cleanup removed {} entries ({}); {} could not be removed".format(removed, packages_deleted_size, failed))
 
@@ -280,12 +259,12 @@ def main():
         )
 
         if client_count:
-            pvr_result = "Complete ({} enabled client{})".format(
+            pvr_result = "{} client{} reloaded; EPG refresh initiated".format(
                 client_count,
                 "" if client_count == 1 else "s",
             )
         else:
-            pvr_result = "Complete (no enabled clients found)"
+            pvr_result = "No enabled clients found"
 
         summary = (
             "Kodi cache deleted: {}\n"
@@ -329,9 +308,8 @@ def main():
         ):
             return
 
-        scan_video_library()
-
-        scan_music_library()
+        scan_library("VideoLibrary.Scan", "Library.IsScanningVideo", "Video library scan")
+        scan_library("AudioLibrary.Scan", "Library.IsScanningMusic", "Music library scan")
 
         clean_libraries()
     except Exception as exc:

@@ -10,7 +10,7 @@ The add-on uses dialogs for choices, summaries, errors, and completion. It does 
 
 1. Clears the contents of Kodi's `special://temp/` cache.
 2. Clears downloaded add-on and build packages from `special://home/addons/packages/`.
-3. Reloads every enabled PVR client to refresh its cached PVR and EPG data without deleting Kodi's open databases.
+3. Reloads every enabled PVR client and initiates its PVR/EPG refresh without deleting Kodi's open databases.
 4. Automatically removes data folders belonging to add-ons that are no longer installed.
 5. Shows the first maintenance summary and offers **Delete Textures** or **Exit**.
 6. Safely purges all registered texture-cache entries through Kodi's JSON-RPC API, without deleting the live `Textures13.db` file or restarting Kodi.
@@ -21,7 +21,7 @@ The add-on uses dialogs for choices, summaries, errors, and completion. It does 
 
 The first summary reports the cache and installation-package sizes deleted, PVR/EPG refresh result, and orphaned add-on data cleanup statistics. **Delete Textures** continues to step 6; **Exit** stops. The second summary reports texture entries removed and failures. **Scan Libraries** continues to steps 8-10; **Exit** stops.
 
-Data belonging to installed or disabled add-ons, media, sources, and PVR databases are not deleted. Orphaned data from uninstalled add-ons is permanently removed. Reloading PVR clients may interrupt Live TV or client-managed activity, so the add-on warns before it starts.
+Data belonging to installed or disabled add-ons, media, sources, and PVR databases are not deleted. Orphaned data from uninstalled add-ons is permanently removed. Reloading PVR clients may interrupt Live TV or client-managed activity.
 
 ## Installation
 
@@ -32,6 +32,8 @@ For direct installation, download the versioned `script.multi.update.kodi` ZIP f
 ## Diagnostics
 
 Progress and cleanup counts are written to Kodi's standard log. Any failure is also shown in a dialog.
+
+The repository includes dependency-free mocked Kodi workflow tests. They run in CI and are excluded from the release ZIP.
 
 ## License
 
